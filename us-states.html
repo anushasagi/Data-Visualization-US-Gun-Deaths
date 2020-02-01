@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+  font: 12px sans-serif;
+}
+
+path {
+  stroke-width: 0.5px;
+  stroke: #000000;
+  fill: #c6dbef;
+  cursor: pointer;
+}
+
+path:hover, path.highlighted {
+  fill: #2171b5;
+}
+
+div.tooltip {
+  position: absolute;
+  background-color: black;
+  border: 1px solid black;
+  color: white;
+  font-weight: bold;
+  padding: 4px 8px;
+  display: none;
+}
+
+p { color: #525252; font-size: 15px; font-family: "Libre Baskerville", serif; line-height: 20px; text-align: center; text-shadow: 0 1px 1px #fff; padding-top: 20px; }
+p.container{ color: yellow; font-size: 15px; font-family: "Libre Baskerville"}
+
+</style>
+<body>
+  <!-- Load d3.js and the geo projection plugin -->
+<script src="https://d3js.org/d3-geo-projection.v2.min.js"></script>
+
+<script src="https://d3js.org/d3.v3.min.js"></script>
+
+
+<h1 align="center">Slate Gun Deaths</h1>
+<p>&nbsp&nbsp&nbspThe Slate Gun Deaths visualization visualizes number of gun deaths across the USA. The bubbles represent number of deaths that happened in particulat state or city. <br>By default the deaths are shown for both cities and states. <br> For males, the gun deaths are shown in blue color and for females, the gun deaths are shown in pink color. <br> But if you select both males and females, the bubble represents the total male and female deaths. Similarly by selecting either state or city or both, it visualizes the total male and female gun deaths.</p>
+<div align = "center">
+    <input type="checkbox" class="checkbox" value="C" id="city" checked><label>Cities</label>
+    <input type="checkbox" class="checkbox" value="S" id="state" checked><label>States</label>
+    <input type="checkbox" class="checkbox" value="M" id="male" unchecked><label>Male</label>
+    <input type="checkbox" class="checkbox" value="F" id="female" unchecked><label>Female</label>
+  </div>
+
+<script>
+
+//Map dimensions (in pixels)
+var width = 900,
+    height = 500;
+
+var projection = d3.geo.albersUsa()
+    .scale(1050)
+    .translate([width/2,height/2])
+var path=d3.geo.path().projection(projection);
+
+var markers = []
+
+d3.csv("freq_by_city.csv", function(err, data) {
+    for(key in data){
+     	jsonData = {
+     	    lat: data[key].lat,
+            long: data[key].lng,
+            group: "C",
+            males: parseInt(data[key].males)*2,
+            females: parseInt(data[key].females)*5,
+            total: (parseInt(data[key].males) + parseInt(data[key].females))*2
+     	}
+        markers.push(jsonData);
+     }
+   });
+
+d3.csv("freq_by_state.csv", function(err, data) {
+    for(key in data){
+     	jsonData = {
+     	    lat: data[key].lat,
+            long: data[key].lng,
+            group: "S",
+            males: parseInt(data[key].males)/1.2,
+            females: parseInt(data[key].females)/0.5,
+            total: (parseInt(data[key].males) + parseInt(data[key].females))/1.2
+     	}
+        markers.push(jsonData);
+     }
+   });
+
+//Create an SVG
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+//Group for the map features
+var features = svg.append("g")
+    .attr("class","features");
+
+//Create zoom/pan listener
+//Change [1,Infinity] to adjust the min/max zoom scale
+var zoom = d3.behavior.zoom()
+    .scaleExtent([1, Infinity])
+    .on("zoom",zoomed);
+
+svg.call(zoom);
+
+//Create a tooltip, hidden at the start
+var tooltip = d3.select("body").append("div").attr("class","tooltip");
+
+d3.json("us-geojson.geojson",function(error,geodata) {
+  if (error) return console.log(error); //unknown error, check the console
+    // Create a color scale
+    var color = d3.scale.ordinal()
+      .domain(["C", "S", "M" , "F"])
+      .range([ "#88419d", "#00441b", "#3182bd", "#dd1c77"])
+
+    // Add a scale for bubble size
+    var size = d3.scale.linear()
+      .domain([0, 1500])  // What's in the data
+      .range([ 0, 80])  // Size in pixel
+  //Create a path for each map feature in the data
+  features.selectAll("path")
+    .data(geodata.features)
+    .enter()
+    .append("path")
+    .attr("d",path)
+    .on("mouseover",showTooltip)
+    .on("mousemove",moveTooltip)
+    .on("mouseout",hideTooltip)
+    .on("click",clicked);
+
+    svg
+      .selectAll("myCircles")
+      .data(markers)
+      .enter()
+      .append("circle")
+        .attr("class" , function(d){ return d.group })
+        .attr("cx", function(d){ return projection([d.long, d.lat])[0]})
+        .attr("cy", function(d){ return projection([d.long, d.lat])[1]})
+        .attr("r", function(d){ return size(d.total) })
+        .style("fill", function(d){ return color(d.group) })
+        .attr("stroke", function(d){ return color(d.group) })
+        .attr("stroke-width", 0)
+        .attr("fill-opacity", .4)
+
+    // This function is gonna change the opacity and size of selected and unselected circles
+    function update(){
+
+      // For each check box:
+      d3.selectAll(".checkbox").each(function(d){
+        cb = d3.select(this);
+        grp = cb.property("value");
+          var change = false;
+        if(grp === "M"
+        && document.getElementById("male").checked === true
+        && document.getElementById("female").checked === true){
+            change = true;
+            svg.selectAll(".C").attr("r", function(d){ return size(d.total) })
+                                      .style("fill", function(d){ return color(d.group) })
+                                      .attr("stroke", function(d){ return color(d.group) })
+            svg.selectAll(".S").attr("r", function(d){ return size(d.total) })
+                                      .style("fill", function(d){ return color(d.group) })
+                                      .attr("stroke", function(d){ return color(d.group) })
+        }else if(grp === "M"
+        && document.getElementById("male").checked === true){
+            change = true;
+            svg.selectAll(".C").attr("r", function(d){ return size(d.males) })
+                                      .style("fill", function(d){ return color("M") })
+                                      .attr("stroke", function(d){ return color("M") })
+            svg.selectAll(".S").attr("r", function(d){ return size(d.males) })
+                                      .style("fill", function(d){ return color("M") })
+                                      .attr("stroke", function(d){ return color("M") })
+        }else if(grp === "M"
+        && document.getElementById("female").checked === true){
+            change = true;
+            svg.selectAll(".C").attr("r", function(d){ return size(d.females) })
+                                      .style("fill", function(d){ return color("F") })
+                                      .attr("stroke", function(d){ return color("F") })
+            svg.selectAll(".S").attr("r", function(d){ return size(d.females) })
+                                      .style("fill", function(d){ return color("F") })
+                                      .attr("stroke", function(d){ return color("F") })
+        }
+        if(cb.property("checked") && grp === "C"){
+          svg.selectAll("."+grp).transition().duration(1000).style("opacity", 1)
+            if(!change){
+                svg.selectAll("."+grp).attr("r", function(d){ return size(d.total) })
+                    .style("fill", function(d){ return color("C") })
+                    .attr("stroke", function(d){ return color("C") })
+            }
+        }
+          else if(cb.property("checked") && grp === "S"){
+            svg.selectAll("."+grp).transition().duration(1000).style("opacity", 1)
+            if(!change){
+                svg.selectAll("."+grp).attr("r", function(d){ return size(d.total) })
+                    .style("fill", function(d){ return color("S") })
+                    .attr("stroke", function(d){ return color("S") })
+            }
+          }
+        // Otherwise I hide it
+        else{
+          svg.selectAll("."+grp).transition().duration(1000).style("opacity", 0).attr("r", 0)
+        }
+
+      })
+    }
+
+    // When a button change, I run the update function
+    d3.selectAll(".checkbox").on("change",update);
+
+    // And I initialize it at the beginning
+    update()
+
+});
+
+// Add optional onClick events for features here
+// d.properties contains the attributes (e.g. d.properties.name, d.properties.population)
+function clicked(d,i) {
+
+}
+
+
+//Update map on zoom/pan
+function zoomed() {
+  features.attr("transform", "translate(" + zoom.translate() + ")scale(" + zoom.scale() + ")")
+      .selectAll("path").style("stroke-width", 1 / zoom.scale() + "px" );
+}
+
+
+//Position of the tooltip relative to the cursor
+var tooltipOffset = {x: 5, y: -25};
+
+//Create a tooltip, hidden at the start
+function showTooltip(d) {
+  moveTooltip();
+
+  tooltip.style("display","block")
+          .text("State: "+d.NAME +" | Males: "+d.properties.males+" | Females: "+d.properties.females )
+}
+
+//Move the tooltip to track the mouse
+function moveTooltip() {
+  tooltip.style("top",(d3.event.pageY+tooltipOffset.y)+"px")
+      .style("left",(d3.event.pageX+tooltipOffset.x)+"px");
+}
+
+//Create a tooltip, hidden at the start
+function hideTooltip() {
+  tooltip.style("display","none");
+}
+
+</script>
+<!-- Button -->
+</body>
